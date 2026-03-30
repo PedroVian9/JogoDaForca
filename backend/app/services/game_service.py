@@ -47,12 +47,23 @@ class GameService:
         self.word_bank = word_bank
         self.metrics = metrics
 
+    def _nickname_claim_ttl(self) -> int:
+        return max(self.settings.heartbeat_ttl_seconds, self.settings.reconnect_timeout_seconds + 5)
+
     async def register_player(self, websocket: WebSocket, nickname: str) -> str:
         nickname = nickname.strip()
         if not nickname:
             raise ValueError("Nickname e obrigatorio")
 
         player_id = str(uuid.uuid4())
+        nickname_claimed = await self.repository.claim_nickname(
+            nickname,
+            player_id,
+            ttl_seconds=self._nickname_claim_ttl(),
+        )
+        if not nickname_claimed:
+            raise ValueError("Ja existe um jogador com este nickname conectado")
+
         now = int(time.time())
         player: Player = {
             "player_id": player_id,
@@ -66,18 +77,22 @@ class GameService:
             "queue_entered_at": None,
         }
 
-        await self.repository.save_player(player)
-        await self.repository.set_heartbeat(player_id, now)
-        await self.connection_manager.bind_player(player_id, websocket)
+        try:
+            await self.repository.save_player(player)
+            await self.repository.set_heartbeat(player_id, now)
+            await self.connection_manager.bind_player(player_id, websocket)
 
-        await self.connection_manager.send_local(
-            player_id,
-            {
-                "type": "connected",
-                "player_id": player_id,
-                "message": "Conectado com sucesso",
-            },
-        )
+            await self.connection_manager.send_local(
+                player_id,
+                {
+                    "type": "connected",
+                    "player_id": player_id,
+                    "message": "Conectado com sucesso",
+                },
+            )
+        except Exception:
+            await self.repository.release_nickname_if_owner(nickname, player_id)
+            raise
         logger.info(
             "player_connected",
             extra={
@@ -131,6 +146,21 @@ class GameService:
         if player is None:
             await websocket.send_json({"type": "error", "message": "Sessao nao encontrada"})
             self.metrics.inc_errors("session_not_found")
+            return False
+
+        nickname_reserved = await self.repository.refresh_nickname_claim(
+            player["nickname"],
+            player_id,
+            ttl_seconds=self._nickname_claim_ttl(),
+        )
+        if not nickname_reserved:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": "Este nickname esta em uso por outra sessao ativa",
+                }
+            )
+            self.metrics.inc_errors("nickname_conflict")
             return False
 
         await self.connection_manager.bind_player(player_id, websocket)
@@ -209,6 +239,11 @@ class GameService:
         player["last_seen"] = now
         await self.repository.save_player(player)
         await self.repository.set_heartbeat(player_id, now)
+        await self.repository.refresh_nickname_claim(
+            player["nickname"],
+            player_id,
+            ttl_seconds=self._nickname_claim_ttl(),
+        )
 
     async def disconnect(self, player_id: str) -> None:
         player = await self.repository.get_player(player_id)
@@ -220,6 +255,7 @@ class GameService:
         player["connected_server"] = None
         player["last_seen"] = now
         await self.repository.save_player(player)
+        await self.repository.release_nickname_if_owner(player["nickname"], player_id)
         self.metrics.inc_disconnections()
         logger.info(
             "player_disconnected",
