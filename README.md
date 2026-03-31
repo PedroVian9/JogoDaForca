@@ -13,6 +13,8 @@ Projeto distribuido com:
 
 ## 1. Arquitetura
 
+Documentação detalhada de revisão dos requisitos do trabalho: `docs/backend-revisao-requisitos.md`.
+
 ### Visao geral
 
 - O frontend abre em `http://localhost`.
@@ -170,6 +172,7 @@ Campos principais do novo `game_state`:
   - `npm install`
   - `npm run dev`
 - Opcional: configurar `VITE_WS_URL` para apontar para um endpoint WebSocket especifico.
+- O frontend usa `sessionStorage` (escopo por aba) para isolar sessão de jogador entre abas do mesmo navegador.
 
 ### Subir tudo
 
