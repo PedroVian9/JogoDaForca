@@ -178,6 +178,18 @@ docker compose down -v
 docker compose up --build
 ```
 
+Se o frontend parecer "antigo" (cache de build/imagem), rode:
+
+```bash
+docker compose down
+docker compose build --no-cache frontend
+docker compose up -d
+```
+
+E no navegador faça um hard refresh (`Ctrl+F5`) ou abra em aba anônima para validar o novo bundle.
+
+Se ainda aparecer tema escuro indevido, limpe cache do navegador/site data para `http://localhost` e recarregue.
+
 ### Abrir todas as URLs automaticamente (Windows / PowerShell)
 
 Abrir tudo de uma vez:
