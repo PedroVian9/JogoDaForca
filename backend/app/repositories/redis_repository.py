@@ -165,6 +165,13 @@ class RedisRepository:
         acquired = await self.redis.set(key, player_id, ex=ttl_seconds, nx=True)
         return bool(acquired)
 
+    async def get_nickname_owner(self, nickname: str) -> Optional[str]:
+        key = self._nickname_key(nickname)
+        owner = await self.redis.get(key)
+        if not owner:
+            return None
+        return str(owner)
+
     async def refresh_nickname_claim(self, nickname: str, player_id: str, ttl_seconds: int) -> bool:
         key = self._nickname_key(nickname)
         current_owner = await self.redis.get(key)
