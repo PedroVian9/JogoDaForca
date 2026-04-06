@@ -5,6 +5,7 @@ const NICKNAME_STORAGE_KEY = "hangman_nickname";
 const ROOM_POLL_INTERVAL_MS = 2000;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const HEARTBEAT_TIMEOUT_MS = 12000;
+const WS_CONNECT_TIMEOUT_MS = 4000;
 const storage = window.sessionStorage;
 
 function buildWsUrl() {
@@ -63,6 +64,7 @@ export default function App() {
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
+  const connectTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const manualCloseRef = useRef(false);
   const playerIdRef = useRef(storage.getItem(PLAYER_STORAGE_KEY) || "");
@@ -149,6 +151,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       clearReconnectTimer();
+      clearConnectTimeout();
       if (heartbeatTimerRef.current) window.clearInterval(heartbeatTimerRef.current);
       manualCloseRef.current = true;
       if (wsRef.current) {
@@ -191,6 +194,13 @@ export default function App() {
     reconnectAttemptsRef.current = 0;
   }
 
+  function clearConnectTimeout() {
+    if (connectTimeoutRef.current) {
+      window.clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+  }
+
   function scheduleReconnect() {
     if (!playerIdRef.current || reconnectTimerRef.current) return;
     const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 5000);
@@ -213,10 +223,17 @@ export default function App() {
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    clearConnectTimeout();
+    connectTimeoutRef.current = window.setTimeout(() => {
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+    }, WS_CONNECT_TIMEOUT_MS);
 
     ws.onopen = () => {
       setIsConnected(true);
       lastHeartbeatAckRef.current = Date.now();
+      clearConnectTimeout();
       clearReconnectTimer();
       ws.send(JSON.stringify(firstMessage));
     };
@@ -229,6 +246,7 @@ export default function App() {
 
     ws.onclose = () => {
       setIsConnected(false);
+      clearConnectTimeout();
       wsRef.current = null;
       if (manualCloseRef.current) {
         manualCloseRef.current = false;
@@ -241,7 +259,12 @@ export default function App() {
       }
     };
 
-    ws.onerror = () => setFeedback("Erro de conexao com servidor");
+    ws.onerror = () => {
+      setFeedback("Erro de conexao com servidor");
+      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
   }
 
   function handleServerEvent(payload) {
@@ -362,6 +385,7 @@ export default function App() {
   function resetConnectionForNewLogin(options = {}) {
     const { clearPlayerStorage = true } = options;
     clearReconnectTimer();
+    clearConnectTimeout();
     if (heartbeatTimerRef.current) {
       window.clearInterval(heartbeatTimerRef.current);
       heartbeatTimerRef.current = null;
