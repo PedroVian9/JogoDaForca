@@ -138,17 +138,13 @@ export default function App() {
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         if (Date.now() - lastHeartbeatAckRef.current > HEARTBEAT_TIMEOUT_MS) {
-          setPhase("reconnecting");
-          setFeedback("Conexao instavel. Tentando reconectar...");
-          ws.close();
+          forceReconnect("Conexao instavel. Tentando reconectar...");
           return;
         }
         try {
           ws.send(JSON.stringify({ type: "heartbeat", player_id: playerId }));
         } catch (_error) {
-          setPhase("reconnecting");
-          setFeedback("Conexao perdida. Tentando reconectar...");
-          ws.close();
+          forceReconnect("Conexao perdida. Tentando reconectar...");
         }
       }
     }, HEARTBEAT_INTERVAL_MS);
@@ -220,6 +216,21 @@ export default function App() {
     }, delay);
   }
 
+  function forceReconnect(message = "Conexao perdida. Tentando reconectar...") {
+    setIsConnected(false);
+    setPhase("reconnecting");
+    setFeedback(message);
+    clearConnectTimeout();
+
+    const ws = wsRef.current;
+    wsRef.current = null;
+    if (ws && ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
+      ws.close();
+    }
+
+    scheduleReconnect();
+  }
+
   function openSocket(firstMessage) {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(firstMessage));
@@ -269,10 +280,7 @@ export default function App() {
     };
 
     ws.onerror = () => {
-      setFeedback("Erro de conexao com servidor");
-      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
+      forceReconnect("Erro de conexao com servidor. Tentando reconectar...");
     };
   }
 
