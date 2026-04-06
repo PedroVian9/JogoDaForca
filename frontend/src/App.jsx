@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const PLAYER_STORAGE_KEY = "hangman_player_id";
 const NICKNAME_STORAGE_KEY = "hangman_nickname";
 const ROOM_POLL_INTERVAL_MS = 2000;
+const HEARTBEAT_INTERVAL_MS = 5000;
+const HEARTBEAT_TIMEOUT_MS = 12000;
 const storage = window.sessionStorage;
 
 function buildWsUrl() {
@@ -64,6 +66,7 @@ export default function App() {
   const reconnectAttemptsRef = useRef(0);
   const manualCloseRef = useRef(false);
   const playerIdRef = useRef(storage.getItem(PLAYER_STORAGE_KEY) || "");
+  const lastHeartbeatAckRef = useRef(Date.now());
 
   const [phase, setPhase] = useState("name");
   const [isConnected, setIsConnected] = useState(false);
@@ -133,8 +136,11 @@ export default function App() {
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "heartbeat", player_id: playerId }));
+        if (Date.now() - lastHeartbeatAckRef.current > HEARTBEAT_TIMEOUT_MS) {
+          ws.close();
+        }
       }
-    }, 5000);
+    }, HEARTBEAT_INTERVAL_MS);
     return () => {
       if (heartbeatTimerRef.current) window.clearInterval(heartbeatTimerRef.current);
     };
@@ -210,11 +216,13 @@ export default function App() {
 
     ws.onopen = () => {
       setIsConnected(true);
+      lastHeartbeatAckRef.current = Date.now();
       clearReconnectTimer();
       ws.send(JSON.stringify(firstMessage));
     };
 
     ws.onmessage = (event) => {
+      lastHeartbeatAckRef.current = Date.now();
       const payload = JSON.parse(event.data);
       handleServerEvent(payload);
     };
@@ -256,6 +264,10 @@ export default function App() {
       } else {
         setPhase("lobby");
       }
+      return;
+    }
+
+    if (payload.type === "heartbeat_ack") {
       return;
     }
 
