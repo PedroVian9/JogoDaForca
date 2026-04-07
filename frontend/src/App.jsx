@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const PLAYER_STORAGE_KEY = "hangman_player_id";
 const NICKNAME_STORAGE_KEY = "hangman_nickname";
 const ROOM_POLL_INTERVAL_MS = 2000;
-const HEARTBEAT_INTERVAL_MS = 1000;
-const HEARTBEAT_TIMEOUT_MS = 3500;
-const WS_CONNECT_TIMEOUT_MS = 4000;
+const HEARTBEAT_INTERVAL_MS = 700;
+const HEARTBEAT_TIMEOUT_MS = 1800;
+const WS_CONNECT_TIMEOUT_MS = 1500;
 const ALLOWED_TEST_SERVERS = new Set(["game-server-1", "game-server-2"]);
 const storage = window.sessionStorage;
 
@@ -235,7 +235,7 @@ export default function App() {
 
   function scheduleReconnect() {
     if (!playerIdRef.current || reconnectTimerRef.current) return;
-    const delay = Math.min(300 * 2 ** reconnectAttemptsRef.current, 2000);
+    const delay = Math.min(150 * 2 ** reconnectAttemptsRef.current, 1000);
     reconnectAttemptsRef.current += 1;
     reconnectTimerRef.current = window.setTimeout(() => {
       reconnectTimerRef.current = null;
@@ -667,7 +667,7 @@ export default function App() {
         {(phase === "lobby" || phase === "reconnecting") && (
           <section className="lobby-section">
             {phase === "reconnecting" && (
-              <div className="reconnect-banner">Tentando reconectar sua sessao. Aguarde alguns segundos...</div>
+              <div className="reconnect-banner">Tentando migrar sua sessao para um backend ativo...</div>
             )}
 
             <div className="lobby-header">
